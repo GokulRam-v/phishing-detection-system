@@ -6,26 +6,19 @@ to prevent users from seeing the actual domain before clicking.
 
 from urllib.parse import urlparse
 
-# Common URL shorteners; extend this list as needed
+# Common URL shorteners — expanded list
 KNOWN_SHORTENERS = {
-    "bit.ly",
-    "tinyurl.com",
-    "t.co",
-    "goo.gl",
-    "ow.ly",
-    "buff.ly",
-    "rebrand.ly",
-    "short.io",
-    "is.gd",
-    "v.gd",
-    "bl.ink",
-    "tiny.cc",
-    "shrtco.de",
-    "cutt.ly",
-    "shorturl.at",
-    "rb.gy",
-    "clck.ru",
-    "qr.ae",
+    # Classic
+    "bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly",
+    "buff.ly", "rebrand.ly", "short.io", "is.gd", "v.gd",
+    "bl.ink", "tiny.cc", "shrtco.de", "cutt.ly", "shorturl.at",
+    "rb.gy", "clck.ru", "qr.ae",
+    # Additional popular / emerging services
+    "t.ly", "s.id", "urlz.fr", "chilp.it", "mcaf.ee",
+    "snip.ly", "po.st", "lnkd.in", "fb.me", "amzn.to",
+    "youtu.be", "ift.tt", "dlvr.it", "soo.gd", "x.co",
+    "lc.cx", "shorten.im", "1url.com", "shrink.im",
+    "vzturl.com", "yourls.org",
 }
 
 
@@ -46,7 +39,7 @@ def check_url_shortener(url: str) -> dict:
         if host in KNOWN_SHORTENERS:
             return {
                 "triggered": True,
-                "detail": f"URL shortener detected ({host})",
+                "detail": f"URL shortener detected ({host}) — real destination hidden",
                 "score": 2,
             }
     except Exception:

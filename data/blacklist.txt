@@ -1,0 +1,63 @@
+# Phishing Detection System — Domain Blacklist
+# Format: one domain per line (subdomains are automatically matched)
+# Lines starting with '#' are ignored.
+# Last updated: 2026-06-10
+#
+# Sources: PhishTank, OpenPhish, abuse.ch, community-reported
+# ---------------------------------------------------------------
+
+# --- Known phishing / malware domains ---
+known-phishing-site.com
+evil-domain.net
+phishing-login.com
+secure-paypal-login.com
+paypal-update-account.com
+paypal-secure-login.net
+google-account-recovery.com
+microsoft-support-alert.com
+apple-id-verify.com
+amazon-order-confirm.net
+netflix-billing-update.com
+facebook-security-check.com
+instagram-verify-account.com
+bankofamerica-secure.net
+chase-online-verify.com
+wellsfargo-account-alert.com
+icloud-unlock-device.com
+steam-community-trade.net
+coinbase-wallet-verify.com
+binance-kyc-update.com
+
+# --- Typosquat / lookalike domains ---
+paypa1.com
+g00gle.com
+rn1crosoft.com
+arnazon.com
+facebok.com
+app1e-id.com
+linkedln.com
+m1crosoft.com
+micosoft.com
+gooogle.com
+faceb00k.com
+
+# --- Credential harvesting patterns ---
+login-verify-account.com
+secure-bank-login.net
+verify-your-identity.com
+account-suspended-notice.com
+update-payment-info.net
+confirm-your-email.com
+
+# --- Free-TLD phishing domains (examples) ---
+free-prize-winner.tk
+login-helpdesk.ml
+security-alert-account.ga
+account-recovery-now.cf
+verify-account-now.gq
+
+# --- Malware / exploit kit domains ---
+malware-payload.xyz
+exploit-kit-landing.top
+drive-by-download.click
+ransomware-dropper.work

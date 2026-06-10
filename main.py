@@ -6,6 +6,11 @@ Usage:
 
 Example:
     python main.py --url http://192.168.1.1/login
+
+Scoring thresholds:
+  0 – 1  → SAFE
+  2 – 4  → SUSPICIOUS
+  5 +    → DANGEROUS
 """
 
 import argparse
@@ -20,6 +25,10 @@ from checks.https_check import check_https
 from checks.shortener_check import check_url_shortener
 from checks.blacklist_check import check_blacklist
 from checks.domain_check import check_suspicious_domain
+from checks.path_check import check_path_keywords
+from checks.tld_check import check_suspicious_tld
+from checks.special_chars_check import check_special_chars
+from checks.reachability_check import check_reachability
 
 # Initialise colorama (handles Windows ANSI codes automatically)
 colorama_init(autoreset=True)
@@ -28,7 +37,7 @@ colorama_init(autoreset=True)
 # Scoring thresholds
 # ---------------------------------------------------------------------------
 THRESHOLD_SUSPICIOUS = 2   # score ≥ 2 → Suspicious
-THRESHOLD_DANGEROUS = 5    # score ≥ 5 → Dangerous
+THRESHOLD_DANGEROUS  = 5   # score ≥ 5 → Dangerous
 
 
 def _validate_url(url: str) -> bool:
@@ -49,9 +58,9 @@ def _label_for_check(triggered: bool) -> str:
 
 def _verdict_color(verdict: str) -> str:
     colors = {
-        "SAFE": Fore.GREEN,
+        "SAFE":       Fore.GREEN,
         "SUSPICIOUS": Fore.YELLOW,
-        "DANGEROUS": Fore.RED,
+        "DANGEROUS":  Fore.RED,
     }
     return colors.get(verdict, Fore.WHITE)
 
@@ -64,52 +73,101 @@ def _score_to_verdict(score: int) -> str:
     return "SAFE"
 
 
+def _status_text_for(score: int, triggered: bool) -> str:
+    """Return a coloured status string for a single check result."""
+    if not triggered:
+        return Fore.GREEN + "OK" + Style.RESET_ALL
+    if score >= THRESHOLD_DANGEROUS:
+        return Fore.RED + "DANGEROUS" + Style.RESET_ALL
+    if score > 0:
+        return Fore.YELLOW + "SUSPICIOUS" + Style.RESET_ALL
+    return Fore.GREEN + "OK" + Style.RESET_ALL
+
+
+def _print_reachability(result: dict) -> None:
+    """Print the live reachability block separately (below the check table)."""
+    extra     = result.get("extra", {})
+    reachable = extra.get("reachable")
+    status    = extra.get("status_code")
+    final_url = extra.get("final_url")
+    detail    = result.get("detail", "")
+
+    print()
+    print(Fore.CYAN + "  ── Live Reachability ─────────────────────────────────────────────" + Style.RESET_ALL)
+
+    if reachable is None:
+        print(f"  {Fore.WHITE}[~]{Style.RESET_ALL} {detail}")
+        return
+
+    if reachable:
+        icon  = Fore.GREEN + "  [ONLINE] " + Style.RESET_ALL
+        color = Fore.GREEN
+    else:
+        icon  = Fore.RED + "  [OFFLINE]" + Style.RESET_ALL
+        color = Fore.RED
+
+    print(f"{icon} {color}{detail}{Style.RESET_ALL}")
+
+    if final_url:
+        print(f"  {'':10} Final URL  : {final_url}")
+    if status:
+        print(f"  {'':10} HTTP Status: {status}")
+
+
 def run_checks(url: str) -> None:
     """Execute all checks against *url* and print the results."""
     print()
-    print(Fore.CYAN + f"Analysing: {url}" + Style.RESET_ALL)
-    print("-" * 60)
+    print(Fore.CYAN + f"  Analysing: {url}" + Style.RESET_ALL)
+    print("  " + "─" * 70)
 
-    checks = [
-        ("IP-based URL",        check_ip_url(url)),
-        ("HTTPS check",         check_https(url)),
-        ("URL length",          check_url_length(url)),
-        ("URL shortener",       check_url_shortener(url)),
-        ("Blacklist",           check_blacklist(url)),
-        ("Suspicious domain",   check_suspicious_domain(url)),
+    # Static / heuristic checks (fast, no network)
+    static_checks = [
+        ("IP-based URL",      check_ip_url(url)),
+        ("Scheme / HTTPS",    check_https(url)),
+        ("URL length",        check_url_length(url)),
+        ("URL shortener",     check_url_shortener(url)),
+        ("Blacklist",         check_blacklist(url)),
+        ("Suspicious domain", check_suspicious_domain(url)),
+        ("Suspicious TLD",    check_suspicious_tld(url)),
+        ("Path / query",      check_path_keywords(url)),
+        ("URL manipulation",  check_special_chars(url)),
     ]
 
     total_score = 0
 
-    for name, result in checks:
+    for name, result in static_checks:
         triggered = result["triggered"]
         detail    = result["detail"]
         score     = result["score"]
         total_score += score
 
-        label = _label_for_check(triggered)
+        label       = _label_for_check(triggered)
+        status_text = _status_text_for(score, triggered)
+        display     = detail if len(detail) <= 60 else detail[:57] + "..."
 
-        if triggered:
-            status_text = Fore.YELLOW + "SUSPICIOUS" if score < THRESHOLD_DANGEROUS else Fore.RED + "DANGEROUS"
-            if score >= THRESHOLD_DANGEROUS:
-                status_text = Fore.RED + "DANGEROUS"
-            elif score > 0:
-                status_text = Fore.YELLOW + "SUSPICIOUS"
-            else:
-                status_text = Fore.GREEN + "OK"
-        else:
-            status_text = Fore.GREEN + "OK"
+        print(f"  {label} {display:<60} +{score}  {status_text}")
 
-        print(f"  {label} {detail:<55} → {status_text}{Style.RESET_ALL}")
+    print("  " + "─" * 70)
 
-    print("-" * 60)
+    # Live reachability check (network call — shown separately)
+    print(f"\n  {Fore.WHITE}Checking live reachability...{Style.RESET_ALL}", end="\r")
+    reach_result = check_reachability(url)
+    total_score += reach_result["score"]
 
+    # Final verdict
     verdict = _score_to_verdict(total_score)
     color   = _verdict_color(verdict)
+    icons   = {"SAFE": "✅", "SUSPICIOUS": "⚠️ ", "DANGEROUS": "🚨"}
+
+    print("  " + "─" * 70)
     print(
         f"\n  Total risk score : {total_score}"
-        f"\n  {color}Final Verdict    : {verdict}{Style.RESET_ALL}\n"
+        f"\n  {color}Final Verdict    : {icons.get(verdict, '')}  {verdict}{Style.RESET_ALL}"
     )
+
+    # Print the reachability detail block last
+    _print_reachability(reach_result)
+    print()
 
 
 def main() -> None:

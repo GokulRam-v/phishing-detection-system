@@ -38,13 +38,15 @@ class TestBlacklistCheck(unittest.TestCase):
         self.assertFalse(result["triggered"])
         self.assertEqual(result["score"], 0)
 
-    def test_subdomain_of_blacklisted_does_not_trigger(self):
-        # The check is exact-match on hostname; subdomains are NOT auto-matched
+    def test_subdomain_of_blacklisted_triggers(self):
+        # Subdomain matching is supported: sub.known-phishing-site.com should
+        # trigger because the parent domain 'known-phishing-site.com' is blacklisted.
         result = check_blacklist(
             "https://sub.known-phishing-site.com",
             blacklist_path=self.blacklist_path,
         )
-        self.assertFalse(result["triggered"])
+        self.assertTrue(result["triggered"])
+        self.assertGreater(result["score"], 0)
 
     def test_missing_blacklist_file_does_not_crash(self):
         result = check_blacklist(
