@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>[ PHISH-HUNT v3.0 ] — Threat Analysis Engine</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+
+:root{
+  --black:  #000a00;
+  --green:  #00ff41;
+  --green2: #00cc33;
+  --green3: #008f11;
+  --dim:    #003b00;
+  --red:    #ff003c;
+  --yellow: #ffd700;
+  --cyan:   #00fff9;
+  --orange: #ff8c00;
+  --white:  #c8ffc8;
+  --muted:  #3a7a3a;
+  --font:   'Share Tech Mono', monospace;
+  --title:  'Orbitron', sans-serif;
+}
+
+html,body{
+  height:100%;width:100%;
+  background:var(--black);
+  color:var(--green);
+  font-family:var(--font);
+  overflow-x:hidden;
+}
+
+/* scanlines */
+body::after{
+  content:'';position:fixed;inset:0;z-index:9999;
+  pointer-events:none;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.15) 2px,rgba(0,0,0,.15) 4px);
+}
+
+#matrix-canvas{position:fixed;inset:0;z-index:0;opacity:.18;}
+#vignette{
+  position:fixed;inset:0;z-index:1;pointer-events:none;
+  background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.75) 100%);
+}
+
+/* ── pages ─────────────────────────────────────────── */
+.page{
+  position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+  z-index:2;
+  transition:opacity .4s ease,transform .4s ease;
+}
+.page.hidden{opacity:0;pointer-events:none;transform:translateY(20px);}
+
+/* ── topbar ─────────────────────────────────────────── */
+.topbar{
+  position:fixed;top:0;left:0;right:0;z-index:5;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.4rem 1.2rem;
+  border-bottom:1px solid var(--dim);
+  background:rgba(0,10,0,.9);
+  font-size:.68rem;color:var(--muted);letter-spacing:.08em;
+}
+.topbar span.hi{color:var(--green);}
+.topbar-right{display:flex;gap:1.4rem;}
+.blink{animation:blink 1.1s step-end infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+/* ── HOME PAGE ──────────────────────────────────────── */
+.home-wrap{
+  text-align:center;padding:2rem 1.5rem;
+  max-width:700px;width:100%;position:relative;
+}
+.home-wrap::before,.home-wrap::after,
+.home-inner::before,.home-inner::after{
+  content:'';position:absolute;
+  width:22px;height:22px;
+  border-color:var(--green3);border-style:solid;
+}
+.home-wrap::before{top:0;left:0;border-width:2px 0 0 2px;}
+.home-wrap::after{top:0;right:0;border-width:2px 2px 0 0;}
+.home-inner::before{bottom:0;left:0;border-width:0 0 2px 2px;}
+.home-inner::after{bottom:0;right:0;border-width:0 2px 2px 0;}
+.home-inner{position:relative;padding:1rem;}
+
+.ascii-art{
+  font-size:.52rem;line-height:1.12;color:var(--green3);
+  white-space:pre;margin-bottom:.7rem;letter-spacing:.04em;
+  animation:glitch-color 7s infinite;
+}
+@keyframes glitch-color{
+  0%,94%,100%{color:var(--green3);text-shadow:none;}
+  95%{color:var(--green);text-shadow:2px 0 var(--red),-2px 0 var(--cyan);}
+  97%{color:var(--green3);}
+  99%{color:var(--cyan);text-shadow:-2px 0 var(--red);}
+}
+
+.sys-title{
+  font-family:var(--title);
+  font-size:clamp(1.1rem,3vw,1.9rem);
+  font-weight:900;letter-spacing:.18em;
+  color:var(--green);text-transform:uppercase;
+  text-shadow:0 0 8px var(--green),0 0 20px var(--green2);
+  margin-bottom:.2rem;
+  animation:flicker 8s infinite;
+}
+@keyframes flicker{0%,89%,91%,93%,100%{opacity:1;}90%,92%{opacity:.5;}}
+
+.sys-sub{font-size:.68rem;color:var(--muted);letter-spacing:.15em;margin-bottom:1.4rem;}
+
+.prompt-line{
+  display:flex;align-items:center;gap:.5rem;
+  margin-bottom:.5rem;font-size:.72rem;color:var(--green3);text-align:left;
+}
+.prompt-sym{color:var(--green);}
+
+.input-wrap{
+  display:flex;gap:.6rem;
+  background:rgba(0,255,65,.03);
+  border:1px solid var(--green3);border-radius:2px;
+  padding:.6rem .8rem;
+}
+.input-wrap::before{content:'>';color:var(--green);font-size:1rem;align-self:center;flex-shrink:0;}
+.input-wrap input{
+  flex:1;background:transparent;border:none;outline:none;
+  color:var(--green);font-family:var(--font);font-size:.95rem;caret-color:var(--green);
+}
+.input-wrap input::placeholder{color:var(--dim);}
+
+.btn-scan{
+  background:transparent;border:1px solid var(--green);
+  color:var(--green);font-family:var(--font);font-size:.85rem;
+  letter-spacing:.1em;padding:.5rem 1.2rem;cursor:pointer;
+  text-transform:uppercase;border-radius:2px;
+  transition:background .2s,color .2s,box-shadow .2s;
+}
+.btn-scan:hover{
+  background:var(--green);color:var(--black);
+  box-shadow:0 0 18px var(--green),0 0 40px var(--green2);
+}
+.btn-scan:active{transform:scale(.97);}
+
+.sys-info{
+  margin-top:1rem;font-size:.65rem;color:var(--muted);
+  letter-spacing:.09em;line-height:1.9;text-align:left;
+}
+.sys-info span{color:var(--green2);}
+
+.error-msg{
+  margin-top:.6rem;color:var(--red);font-size:.75rem;
+  min-height:1em;letter-spacing:.05em;animation:shake .3s ease;text-align:left;
+}
+@keyframes shake{0%,100%{transform:translateX(0);}25%{transform:translateX(-5px);}75%{transform:translateX(5px);}}
+
+/* ── SCAN OVERLAY ───────────────────────────────────── */
+#scan-overlay{
+  position:fixed;inset:0;z-index:20;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:rgba(0,5,0,.97);
+  opacity:0;pointer-events:none;transition:opacity .25s;
+  font-family:var(--font);
+}
+#scan-overlay.active{opacity:1;pointer-events:all;}
+
+.scan-header{
+  font-family:var(--title);font-size:.95rem;color:var(--green);
+  letter-spacing:.25em;text-transform:uppercase;
+  text-shadow:0 0 12px var(--green);margin-bottom:1.3rem;
+}
+.hex-ring{position:relative;width:100px;height:100px;margin-bottom:1.5rem;}
+.hex-ring svg{position:absolute;inset:0;animation:spin-slow 3s linear infinite;}
+.hex-ring svg.inner{animation:spin-slow 2s linear infinite reverse;}
+@keyframes spin-slow{to{transform:rotate(360deg);}}
+.hex-center{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:2rem;animation:pg 1.5s ease-in-out infinite;
+}
+@keyframes pg{0%,100%{text-shadow:0 0 8px var(--green);}50%{text-shadow:0 0 25px var(--green),0 0 50px var(--green2);}}
+
+.scan-phase{
+  font-size:.68rem;color:var(--cyan);letter-spacing:.12em;
+  margin-bottom:.8rem;min-height:1.2em;
+}
+.scan-log{
+  width:360px;max-width:92vw;
+  border:1px solid var(--green3);border-radius:2px;
+  background:rgba(0,20,0,.65);padding:.7rem .9rem;
+}
+.scan-log-header{
+  font-size:.62rem;color:var(--muted);
+  border-bottom:1px solid var(--dim);padding-bottom:.35rem;margin-bottom:.5rem;
+  letter-spacing:.12em;display:flex;justify-content:space-between;
+}
+.scan-check-item{
+  display:flex;align-items:center;gap:.6rem;
+  font-size:.72rem;color:var(--muted);padding:.15rem 0;
+  opacity:0;transition:opacity .2s,color .2s;
+}
+.scan-check-item.running{opacity:1;color:var(--cyan);}
+.scan-check-item.done{opacity:1;color:var(--green);}
+.scan-check-item .sci-status{font-size:.62rem;margin-left:auto;}
+.scan-check-item.done   .sci-status::before{content:'[DONE]';color:var(--green);}
+.scan-check-item.running .sci-status::before{content:'[....] ';color:var(--cyan);animation:blink .6s step-end infinite;}
+
+/* ── RESULTS PAGE ───────────────────────────────────── */
+#page-results{align-items:flex-start;padding:3.5rem 1rem 3rem;overflow-y:auto;}
+.results-wrap{width:100%;max-width:900px;margin:0 auto;}
+
+.results-header{
+  display:flex;align-items:center;gap:1rem;
+  margin-bottom:1.2rem;border-bottom:1px solid var(--dim);padding-bottom:.7rem;
+}
+.btn-back{
+  background:transparent;border:1px solid var(--green3);
+  color:var(--muted);font-family:var(--font);font-size:.7rem;
+  padding:.32rem .75rem;cursor:pointer;letter-spacing:.1em;text-transform:uppercase;
+  transition:border-color .2s,color .2s;
+}
+.btn-back:hover{border-color:var(--green);color:var(--green);}
+.results-title{font-family:var(--title);font-size:.8rem;color:var(--green);letter-spacing:.2em;text-transform:uppercase;text-shadow:0 0 8px var(--green);}
+.results-ts{margin-left:auto;font-size:.62rem;color:var(--muted);}
+
+/* verdict */
+.verdict-banner{
+  border-radius:2px;padding:1.3rem 1.5rem;margin-bottom:1.3rem;
+  display:flex;align-items:center;gap:1.3rem;
+  position:relative;overflow:hidden;animation:fadeUp .4s ease both;
+}
+@keyframes fadeUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+.verdict-banner::before{
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(45deg,transparent,transparent 6px,rgba(255,255,255,.01) 6px,rgba(255,255,255,.01) 12px);
+}
+.verdict-banner.safe      {border:1px solid var(--green2);background:rgba(0,255,65,.05);}
+.verdict-banner.suspicious{border:1px solid var(--yellow);background:rgba(255,215,0,.05);}
+.verdict-banner.dangerous {border:1px solid var(--red);   background:rgba(255,0,60,.07);}
+
+.verdict-ascii{font-size:.48rem;line-height:1.1;white-space:pre;flex-shrink:0;}
+.safe       .verdict-ascii{color:var(--green2);}
+.suspicious .verdict-ascii{color:var(--yellow);}
+.dangerous  .verdict-ascii{color:var(--red);animation:flicker 2s infinite;}
+
+.verdict-info{flex:1;}
+.verdict-label{font-family:var(--title);font-size:1.4rem;font-weight:900;letter-spacing:.15em;}
+.safe       .verdict-label{color:var(--green); text-shadow:0 0 12px var(--green);}
+.suspicious .verdict-label{color:var(--yellow);text-shadow:0 0 12px var(--yellow);}
+.dangerous  .verdict-label{color:var(--red);   text-shadow:0 0 12px var(--red);}
+.verdict-desc{font-size:.74rem;color:var(--muted);margin-top:.3rem;letter-spacing:.05em;}
+.verdict-url{font-size:.65rem;color:var(--dim);word-break:break-all;margin-top:.2rem;}
+
+/* score bar */
+.score-bar-wrap{margin-bottom:1.3rem;}
+.score-bar-hdr{display:flex;justify-content:space-between;font-size:.67rem;color:var(--muted);letter-spacing:.1em;margin-bottom:.4rem;}
+.score-bar-track{
+  height:8px;background:var(--dim);border-radius:1px;overflow:hidden;position:relative;
+}
+.score-bar-track::after{
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg,transparent,transparent 8px,rgba(0,0,0,.3) 8px,rgba(0,0,0,.3) 9px);
+}
+.score-bar-fill{height:100%;width:0;transition:width 1.3s cubic-bezier(.23,1,.32,1);}
+.score-bar-fill.safe      {background:linear-gradient(90deg,var(--green3),var(--green));box-shadow:0 0 8px var(--green);}
+.score-bar-fill.suspicious{background:linear-gradient(90deg,#996600,var(--yellow));box-shadow:0 0 8px var(--yellow);}
+.score-bar-fill.dangerous {background:linear-gradient(90deg,#880022,var(--red));box-shadow:0 0 8px var(--red);}
+
+/* standard check cards */
+.checks-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(340px,1fr));
+  gap:.7rem;
+  margin-bottom:1.4rem;
+}
+.check-card{
+  background:rgba(0,15,0,.5);border:1px solid var(--dim);border-radius:2px;
+  padding:.85rem 1rem;display:flex;align-items:flex-start;gap:.85rem;
+  animation:fadeUp .4s ease both;position:relative;overflow:hidden;
+  transition:border-color .2s,box-shadow .2s;
+}
+.check-card:hover{border-color:var(--green3);box-shadow:0 0 10px rgba(0,255,65,.07);}
+.check-card::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;}
+.check-card.ok     ::before{background:var(--green2);}
+.check-card.warn   ::before{background:var(--yellow);}
+.check-card.danger ::before{background:var(--red);}
+.check-card.ok    {border-color:rgba(0,204,51,.3);}
+.check-card.warn  {border-color:rgba(255,215,0,.3);}
+.check-card.danger{border-color:rgba(255,0,60,.35);}
+.check-card:nth-child(1){animation-delay:.03s;} .check-card:nth-child(2){animation-delay:.06s;}
+.check-card:nth-child(3){animation-delay:.09s;} .check-card:nth-child(4){animation-delay:.12s;}
+.check-card:nth-child(5){animation-delay:.15s;} .check-card:nth-child(6){animation-delay:.18s;}
+.check-card:nth-child(7){animation-delay:.21s;} .check-card:nth-child(8){animation-delay:.24s;}
+.check-card:nth-child(9){animation-delay:.27s;} .check-card:nth-child(10){animation-delay:.30s;}
+
+.check-num{font-size:.62rem;color:var(--muted);width:20px;flex-shrink:0;padding-top:1px;font-family:var(--title);}
+.check-body{flex:1;min-width:0;}
+.check-name{font-size:.78rem;font-weight:600;letter-spacing:.08em;margin-bottom:.18rem;text-transform:uppercase;}
+.ok    .check-name{color:var(--green);}
+.warn  .check-name{color:var(--yellow);}
+.danger.check-name{color:var(--red);}
+.check-detail{font-size:.7rem;color:var(--muted);line-height:1.55;}
+
+.check-badge{
+  font-size:.6rem;font-weight:700;letter-spacing:.1em;
+  padding:.16rem .5rem;border-radius:1px;align-self:flex-start;
+  flex-shrink:0;text-transform:uppercase;font-family:var(--title);
+}
+.badge-ok    {border:1px solid var(--green2);color:var(--green2);}
+.badge-warn  {border:1px solid var(--yellow);color:var(--yellow);}
+.badge-danger{border:1px solid var(--red);   color:var(--red);animation:flicker 2s infinite;}
+
+/* ── SOURCE ANALYSIS SECTION ────────────────────────── */
+.src-section{
+  border:1px solid var(--green3);border-radius:2px;
+  background:rgba(0,20,0,.55);
+  padding:1.2rem 1.3rem;
+  animation:fadeUp .4s ease .35s both;
+}
+.src-section-title{
+  font-family:var(--title);font-size:.78rem;color:var(--green);
+  letter-spacing:.18em;text-transform:uppercase;
+  text-shadow:0 0 8px var(--green);
+  margin-bottom:.9rem;display:flex;align-items:center;gap:.7rem;
+}
+.src-section-title::after{
+  content:'';flex:1;height:1px;background:var(--dim);
+}
+.src-section-badge{
+  font-size:.6rem;padding:.15rem .5rem;border-radius:1px;font-family:var(--title);
+  letter-spacing:.08em;text-transform:uppercase;
+}
+
+/* purpose + meta row */
+.src-meta{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));
+  gap:.7rem;margin-bottom:.9rem;
+}
+.src-meta-card{
+  background:rgba(0,10,0,.7);border:1px solid var(--dim);border-radius:2px;
+  padding:.65rem .85rem;
+}
+.src-meta-label{font-size:.6rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.25rem;}
+.src-meta-value{font-size:.73rem;color:var(--white);word-break:break-all;line-height:1.45;}
+.src-meta-value.purpose{color:var(--cyan);}
+.src-meta-value.ok{color:var(--green);}
+
+/* permissions row */
+.perm-row{
+  margin-bottom:.9rem;
+}
+.perm-row-label{font-size:.6rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.4rem;}
+.perm-tags{display:flex;flex-wrap:wrap;gap:.4rem;}
+.perm-tag{
+  font-size:.65rem;padding:.2rem .55rem;border-radius:1px;
+  border:1px solid var(--orange);color:var(--orange);
+  text-transform:uppercase;letter-spacing:.06em;
+  animation:flicker 3s infinite;
+}
+.perm-none{font-size:.7rem;color:var(--green2);}
+
+/* findings list */
+.findings-label{font-size:.6rem;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.45rem;}
+.finding-item{
+  display:flex;align-items:flex-start;gap:.6rem;
+  padding:.32rem 0;border-bottom:1px solid rgba(0,59,0,.5);
+  font-size:.71rem;line-height:1.5;
+}
+.finding-item:last-child{border-bottom:none;}
+.finding-icon{flex-shrink:0;margin-top:.05rem;}
+.finding-icon.warn  {color:var(--yellow);}
+.finding-icon.danger{color:var(--red);}
+.finding-icon.info  {color:var(--cyan);}
+.finding-text{color:var(--white);}
+.no-findings{font-size:.72rem;color:var(--green2);padding:.3rem 0;}
+
+/* ── RESPONSIVE ─────────────────────────────────────── */
+@media(max-width:520px){
+  .input-wrap{flex-direction:column;}
+  .checks-grid{grid-template-columns:1fr;}
+  .verdict-banner{flex-direction:column;}
+  .verdict-ascii{display:none;}
+  .src-meta{grid-template-columns:1fr;}
+}
+</style>
+</head>
+<body>
+
+<canvas id="matrix-canvas"></canvas>
+<div id="vignette"></div>
+
+<div class="topbar">
+  <div>
+    [SYS] <span class="hi">PHISH-HUNT</span> v3.0.0 &nbsp;|&nbsp;
+    KERNEL: 5.15.0-threat-engine &nbsp;|&nbsp;
+    <span class="hi">SOURCE-ANALYSIS</span>: ENABLED
+  </div>
+  <div class="topbar-right">
+    <span id="clock">00:00:00</span>
+    <span>CPU: <span id="fake-cpu">--</span>%</span>
+    <span id="api-status" style="color:var(--muted)">■ API: CHECKING</span>
+  </div>
+</div>
+
+<!-- ════════ PAGE 1 – INPUT ════════ -->
+<div class="page" id="page-home">
+  <div class="home-wrap">
+    <div class="home-inner">
+
+      <pre class="ascii-art">
+  ██████╗ ██╗  ██╗██╗███████╗██╗  ██╗    ██╗  ██╗██╗   ██╗███╗   ██╗████████╗
+  ██╔══██╗██║  ██║██║██╔════╝██║  ██║    ██║  ██║██║   ██║████╗  ██║╚══██╔══╝
+  ██████╔╝███████║██║███████╗███████║    ███████║██║   ██║██╔██╗ ██║   ██║   
+  ██╔═══╝ ██╔══██║██║╚════██║██╔══██║    ██╔══██║██║   ██║██║╚██╗██║   ██║   
+  ██║     ██║  ██║██║███████║██║  ██║    ██║  ██║╚██████╔╝██║ ╚████║   ██║   
+  ╚═╝     ╚═╝  ╚═╝╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝  </pre>
+
+      <div class="sys-title">Threat Analysis Engine</div>
+      <div class="sys-sub">// URL Phishing + Source Code Inspector //</div>
+
+      <div class="prompt-line">
+        <span class="prompt-sym">root@phish-hunt:~#</span>
+        <span id="typewriter"></span><span class="blink">_</span>
+      </div>
+
+      <div class="input-wrap">
+        <input type="text" id="url-input"
+          placeholder="enter target url..."
+          autocomplete="off" spellcheck="false"/>
+        <button class="btn-scan" id="btn-scan" onclick="startScan()">&gt; SCAN</button>
+      </div>
+      <div class="error-msg" id="error-msg"></div>
+
+      <div class="sys-info">
+        <span>STATIC:</span> IP · HTTPS · LENGTH · SHORTENER · BLACKLIST · DOMAIN · TLD · PATH · SPECIAL_CHARS<br/>
+        <span>LIVE:</span> REACHABILITY · REDIRECT_CHAIN<br/>
+        <span>NEW →</span> <span style="color:var(--cyan)">SOURCE_CODE_ANALYSIS</span> · FORM_ACTIONS · PASSWORD_FIELDS · JS_OBFUSCATION · IFRAMES · PERMISSIONS<br/>
+        <span>API:</span> <span id="api-info">http://localhost:5000/api/scan</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════════ SCAN OVERLAY ════════ -->
+<div id="scan-overlay">
+  <div class="scan-header">[ INITIATING DEEP SCAN ]</div>
+
+  <div class="hex-ring">
+    <svg viewBox="0 0 100 100" width="100" height="100">
+      <circle cx="50" cy="50" r="44" fill="none" stroke="#003b00" stroke-width="1.5"/>
+      <circle cx="50" cy="50" r="44" fill="none" stroke="#00ff41" stroke-width="1.5" stroke-dasharray="30 250" stroke-linecap="round"/>
+      <circle cx="50" cy="50" r="38" fill="none" stroke="#003b00" stroke-width="1"/>
+      <circle cx="50" cy="50" r="38" fill="none" stroke="#00cc33" stroke-width="1" stroke-dasharray="15 220" stroke-linecap="round"/>
+    </svg>
+    <svg class="inner" viewBox="0 0 100 100" width="100" height="100">
+      <circle cx="50" cy="50" r="30" fill="none" stroke="#008f11" stroke-width="1" stroke-dasharray="8 40" stroke-linecap="round"/>
+    </svg>
+    <div class="hex-center">⬡</div>
+  </div>
+
+  <div class="scan-phase" id="scan-phase">INITIALISING MODULES...</div>
+
+  <div class="scan-log">
+    <div class="scan-log-header">
+      <span>EXECUTION LOG</span>
+      <span class="blink">RUNNING</span>
+    </div>
+    <div id="scan-checks"></div>
+  </div>
+</div>
+
+<!-- ════════ PAGE 2 – RESULTS ════════ -->
+<div class="page hidden" id="page-results">
+  <div class="results-wrap">
+
+    <div class="results-header">
+      <button class="btn-back" onclick="goBack()">&lt; BACK</button>
+      <span class="results-title">// Scan Report //</span>
+      <span class="results-ts" id="results-ts"></span>
+    </div>
+
+    <div id="verdict-container"></div>
+
+    <div class="score-bar-wrap">
+      <div class="score-bar-hdr">
+        <span>RISK SCORE METER</span>
+        <span id="score-bar-label">0 / 23</span>
+      </div>
+      <div class="score-bar-track">
+        <div class="score-bar-fill" id="score-bar-fill"></div>
+      </div>
+    </div>
+
+    <!-- Standard check cards -->
+    <div class="checks-grid" id="checks-grid"></div>
+
+    <!-- Source analysis deep-dive -->
+    <div class="src-section" id="src-section" style="display:none;">
+      <div class="src-section-title">
+        Source Code Analysis
+        <span class="src-section-badge" id="src-badge"></span>
+      </div>
+
+      <!-- meta cards -->
+      <div class="src-meta" id="src-meta"></div>
+
+      <!-- permissions -->
+      <div class="perm-row" id="perm-row"></div>
+
+      <!-- findings -->
+      <div class="findings-label">DETECTED ISSUES</div>
+      <div id="findings-list"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════
+   MATRIX RAIN
+═══════════════════════════════ */
+(function(){
+  const c=document.getElementById('matrix-canvas');
+  const ctx=c.getContext('2d');
+  let W,H,cols,drops;
+  function init(){
+    W=c.width=window.innerWidth; H=c.height=window.innerHeight;
+    cols=Math.floor(W/16);
+    drops=Array(cols).fill(0).map(()=>Math.random()*-50);
+  }
+  const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%^&*<>?アイウエオカキクケコサシスセソ';
+  function draw(){
+    ctx.fillStyle='rgba(0,10,0,0.05)'; ctx.fillRect(0,0,W,H);
+    for(let i=0;i<cols;i++){
+      const ch=chars[Math.floor(Math.random()*chars.length)];
+      ctx.fillStyle='#00ff41'; ctx.font='14px monospace';
+      ctx.fillText(ch,i*16,drops[i]*16);
+      if(drops[i]*16>H&&Math.random()>.975) drops[i]=0;
+      drops[i]++;
+    }
+  }
+  init(); window.addEventListener('resize',init);
+  setInterval(draw,50);
+})();
+
+/* ═══════════════════════════════
+   CLOCK + FAKE CPU
+═══════════════════════════════ */
+function updateClock(){
+  const n=new Date();
+  document.getElementById('clock').textContent=
+    pad(n.getHours())+':'+pad(n.getMinutes())+':'+pad(n.getSeconds());
+  document.getElementById('fake-cpu').textContent=(8+Math.floor(Math.random()*10));
+}
+function pad(v){return String(v).padStart(2,'0');}
+setInterval(updateClock,1000); updateClock();
+
+/* ═══════════════════════════════
+   TYPEWRITER
+═══════════════════════════════ */
+(function(){
+  const el=document.getElementById('typewriter');
+  const msgs=[
+    'scan --deep --source --url <target>',
+    'inspect dom_forms password_fields',
+    'analyze js_obfuscation iframe_inject',
+    'check permissions geolocation camera',
+    'query blacklist_db domain_patterns',
+  ];
+  let mi=0,ci=0,dir=1;
+  function tick(){
+    const msg=msgs[mi];
+    if(dir===1){ el.textContent=msg.slice(0,ci++); if(ci>msg.length){dir=-1;setTimeout(tick,1800);return;} }
+    else{ el.textContent=msg.slice(0,ci--); if(ci<0){dir=1;ci=0;mi=(mi+1)%msgs.length;setTimeout(tick,400);return;} }
+    setTimeout(tick,dir===1?52:26);
+  }
+  tick();
+})();
+
+/* ═══════════════════════════════
+   API HEALTH CHECK
+═══════════════════════════════ */
+const API = 'http://localhost:5000';
+let apiOnline = false;
+
+async function checkApiHealth(){
+  try{
+    const r = await fetch(API+'/api/health',{signal:AbortSignal.timeout(2000)});
+    if(r.ok){
+      apiOnline=true;
+      document.getElementById('api-status').textContent='■ API: ONLINE';
+      document.getElementById('api-status').style.color='var(--green)';
+      return;
+    }
+  }catch{}
+  document.getElementById('api-status').textContent='■ API: OFFLINE';
+  document.getElementById('api-status').style.color='var(--red)';
+}
+checkApiHealth();
+setInterval(checkApiHealth,10000);
+
+/* ═══════════════════════════════
+   VERDICT ASCII ART
+═══════════════════════════════ */
+const VERDICT_ASCII={
+  SAFE:`  ██████╗ █████╗ ███████╗███████╗
+ ██╔════╝██╔══██╗██╔════╝██╔════╝
+ ╚█████╗ ███████║█████╗  █████╗  
+  ╚═══██╗██╔══██║██╔══╝  ██╔══╝  
+ ██████╔╝██║  ██║██║     ███████╗
+ ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚══════╝`,
+  SUSPICIOUS:` ██╗    ██╗ █████╗ ██████╗ ███╗  ██╗
+ ██║    ██║██╔══██╗██╔══██╗████╗ ██║
+ ██║ █╗ ██║███████║██████╔╝██╔██╗██║
+ ██║███╗██║██╔══██║██╔══██╗██║╚████║
+ ╚███╔███╔╝██║  ██║██║  ██║██║ ╚███║
+  ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚══╝`,
+  DANGEROUS:` ██████╗  █████╗ ███╗  ██╗ ██████╗ ███████╗██████╗
+ ██╔══██╗██╔══██╗████╗ ██║██╔════╝██╔════╝██╔══██╗
+ ██║  ██║███████║██╔██╗██║██║  ███╗█████╗  ██████╔╝
+ ██║  ██║██╔══██║██║╚████║██║   ██║██╔══╝  ██╔══██╗
+ ██████╔╝██║  ██║██║ ╚███║╚██████╔╝███████╗██║  ██║
+ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚══╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝`,
+};
+
+/* ═══════════════════════════════
+   HELPERS
+═══════════════════════════════ */
+const MAX_SCORE=23;
+
+function scoreToVerdict(s){ return s>=7?'DANGEROUS':s>=3?'SUSPICIOUS':'SAFE'; }
+
+function validateUrl(url){
+  try{ const p=new URL(url); return p.protocol==='http:'||p.protocol==='https:'; }
+  catch{ return false; }
+}
+
+function setError(msg){
+  const el=document.getElementById('error-msg');
+  el.textContent=msg?`[ERROR] ${msg}`:'';
+  el.style.animation='none'; void el.offsetWidth;
+  el.style.animation='shake .3s ease';
+}
+
+function escHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function delay(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+/* ═══════════════════════════════
+   SCAN PHASES
+═══════════════════════════════ */
+const PHASES=[
+  'RUNNING STATIC HEURISTICS...',
+  'QUERYING BLACKLIST DATABASE...',
+  'CHECKING LIVE REACHABILITY...',
+  'FETCHING PAGE SOURCE CODE...',
+  'ANALYSING DOM STRUCTURE...',
+  'SCANNING JAVASCRIPT PAYLOADS...',
+  'DETECTING PERMISSION REQUESTS...',
+  'COMPILING THREAT REPORT...',
+];
+
+/* ═══════════════════════════════
+   SCAN FLOW
+═══════════════════════════════ */
+async function startScan(){
+  const url=document.getElementById('url-input').value.trim();
+  setError('');
+  if(!url){ setError('No target URL provided.'); return; }
+  if(!validateUrl(url)){ setError('Invalid URL — must start with http:// or https://'); return; }
+
+  if(!apiOnline){
+    setError('API server offline. Run: python server.py');
+    return;
+  }
+
+  // Show overlay
+  const overlay=document.getElementById('scan-overlay');
+  const scanChecksEl=document.getElementById('scan-checks');
+  const phaseEl=document.getElementById('scan-phase');
+  scanChecksEl.innerHTML='';
+  overlay.classList.add('active');
+
+  // Animate phase labels
+  let phaseIdx=0;
+  const phaseTimer=setInterval(()=>{
+    phaseEl.textContent=PHASES[phaseIdx%PHASES.length];
+    phaseIdx++;
+  },600);
+
+  // Show fake progress items
+  const fakeSteps=[
+    '[IP]  IP-Based URL','[SSL] HTTPS Verify','[LEN] URL Length',
+    '[SHT] Shortener DB','[BL]  Blacklist','[DOM] Domain Pattern',
+    '[TLD] Suspicious TLD','[PTH] Path/Query','[CHR] URL Manipulation',
+    '[NET] Reachability','[SRC] Source Code Analysis',
+  ];
+  for(const step of fakeSteps){
+    const item=document.createElement('div');
+    item.className='scan-check-item running';
+    item.innerHTML=`<span style="font-size:.62rem;color:var(--muted);width:38px;flex-shrink:0">${step.slice(0,5)}</span>${step.slice(6)}<span class="sci-status"></span>`;
+    scanChecksEl.appendChild(item);
+    await delay(180);
+  }
+
+  // Actual API call
+  let data;
+  try{
+    const resp=await fetch(API+'/api/scan',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({url}),
+    });
+    data=await resp.json();
+    if(!resp.ok){ throw new Error(data.error||'API error'); }
+  }catch(e){
+    clearInterval(phaseTimer);
+    overlay.classList.remove('active');
+    setError('Scan failed: '+e.message);
+    return;
+  }
+
+  // Mark all done
+  scanChecksEl.querySelectorAll('.scan-check-item').forEach(el=>{
+    el.classList.remove('running'); el.classList.add('done');
+  });
+  phaseEl.textContent='SCAN COMPLETE — COMPILING REPORT';
+  clearInterval(phaseTimer);
+
+  await delay(600);
+  overlay.classList.remove('active');
+  showResults(data);
+}
+
+/* ═══════════════════════════════
+   RENDER RESULTS
+═══════════════════════════════ */
+function showResults(data){
+  const {url, score, verdict, checks}=data;
+  const vClass=verdict.toLowerCase();
+  const desc={
+    SAFE:       'No phishing indicators detected. URL appears legitimate.',
+    SUSPICIOUS: 'Phishing indicators found. Proceed with caution.',
+    DANGEROUS:  'CRITICAL: High-confidence phishing URL. DO NOT VISIT.',
+  }[verdict];
+
+  const now=new Date();
+  document.getElementById('results-ts').textContent=
+    now.toLocaleDateString()+' '+pad(now.getHours())+':'+pad(now.getMinutes())+':'+pad(now.getSeconds());
+
+  // Verdict
+  document.getElementById('verdict-container').innerHTML=`
+    <div class="verdict-banner ${vClass}">
+      <pre class="verdict-ascii">${VERDICT_ASCII[verdict]}</pre>
+      <div class="verdict-info">
+        <div class="verdict-label">${verdict}</div>
+        <div class="verdict-desc">${desc}</div>
+        <div class="verdict-url">TARGET: ${escHtml(url)}</div>
+      </div>
+    </div>`;
+
+  // Score bar
+  const pct=Math.min(100,Math.round((score/MAX_SCORE)*100));
+  document.getElementById('score-bar-label').textContent=`${score} / ${MAX_SCORE}`;
+  const fill=document.getElementById('score-bar-fill');
+  fill.className=`score-bar-fill ${vClass}`;
+  fill.style.width='0';
+  setTimeout(()=>{ fill.style.width=pct+'%'; },80);
+
+  // Standard check cards (all except source)
+  const grid=document.getElementById('checks-grid');
+  grid.innerHTML='';
+  const standard=checks.filter(c=>c.key!=='source');
+  standard.forEach((c,i)=>{
+    let cls,bCls,bLbl;
+    if(!c.triggered){cls='ok';bCls='badge-ok';bLbl='CLEAR';}
+    else if(c.score>=5){cls='danger';bCls='badge-danger';bLbl='CRITICAL';}
+    else{cls='warn';bCls='badge-warn';bLbl='FLAGGED';}
+    grid.innerHTML+=`
+      <div class="check-card ${cls}" style="animation-delay:${i*0.04}s">
+        <div class="check-num">${String(i+1).padStart(2,'0')}</div>
+        <div class="check-body">
+          <div class="check-name">${escHtml(c.label)}</div>
+          <div class="check-detail">${escHtml(c.detail)}</div>
+        </div>
+        <span class="check-badge ${bCls}">${bLbl}</span>
+      </div>`;
+  });
+
+  // Source analysis section
+  const src=checks.find(c=>c.key==='source');
+  if(src){
+    renderSourceSection(src);
+  }
+
+  document.getElementById('page-home').classList.add('hidden');
+  const pr=document.getElementById('page-results');
+  pr.classList.remove('hidden');
+  pr.scrollTop=0;
+}
+
+/* ═══════════════════════════════
+   SOURCE ANALYSIS RENDER
+═══════════════════════════════ */
+function renderSourceSection(src){
+  const sec=document.getElementById('src-section');
+  sec.style.display='block';
+
+  // badge
+  const badge=document.getElementById('src-badge');
+  if(!src.reachable){
+    badge.textContent='UNREACHABLE'; badge.style.border='1px solid var(--muted)'; badge.style.color='var(--muted)';
+  } else if(!src.triggered){
+    badge.textContent='CLEAN'; badge.style.border='1px solid var(--green2)'; badge.style.color='var(--green2)';
+  } else if(src.score>=5){
+    badge.textContent='CRITICAL'; badge.style.border='1px solid var(--red)'; badge.style.color='var(--red)';
+  } else {
+    badge.textContent='SUSPICIOUS'; badge.style.border='1px solid var(--yellow)'; badge.style.color='var(--yellow)';
+  }
+
+  // Meta cards
+  const metaEl=document.getElementById('src-meta');
+  const statusColor=src.status_code&&src.status_code<400?'var(--green)':
+                    src.status_code?'var(--red)':'var(--muted)';
+  metaEl.innerHTML=`
+    <div class="src-meta-card">
+      <div class="src-meta-label">Page Title</div>
+      <div class="src-meta-value">${escHtml(src.page_title||'(none)')}</div>
+    </div>
+    <div class="src-meta-card">
+      <div class="src-meta-label">HTTP Status</div>
+      <div class="src-meta-value" style="color:${statusColor}">${src.status_code||'N/A'}</div>
+    </div>
+    <div class="src-meta-card">
+      <div class="src-meta-label">Page Purpose / Behaviour</div>
+      <div class="src-meta-value purpose">${escHtml(src.page_purpose||'unknown')}</div>
+    </div>
+    <div class="src-meta-card">
+      <div class="src-meta-label">Risk Score Contribution</div>
+      <div class="src-meta-value" style="color:${src.score>0?'var(--red)':'var(--green2)'}">+${src.score} points</div>
+    </div>`;
+
+  // Permissions
+  const permEl=document.getElementById('perm-row');
+  if(src.permissions&&src.permissions.length){
+    permEl.innerHTML=`<div class="perm-row-label">PERMISSION / SENSITIVE APIs DETECTED</div>
+      <div class="perm-tags">${src.permissions.map(p=>`<span class="perm-tag">${escHtml(p)}</span>`).join('')}</div>`;
+  } else {
+    permEl.innerHTML=`<div class="perm-row-label">PERMISSION APIs</div>
+      <div class="perm-none">✓ No sensitive permission requests detected</div>`;
+  }
+
+  // Findings
+  const findEl=document.getElementById('findings-list');
+  if(!src.findings||src.findings.length===0){
+    findEl.innerHTML=`<div class="no-findings">✓ No suspicious patterns found in page source</div>`;
+  } else {
+    findEl.innerHTML=src.findings.map((f,i)=>{
+      const isHigh=/blacklist|password|obfuscat|form submit/i.test(f);
+      const isMed =/iframe|redirect|hidden input|brand/i.test(f);
+      const cls=isHigh?'danger':isMed?'warn':'info';
+      const sym=isHigh?'[!!]':isMed?'[!]':'[i]';
+      return `<div class="finding-item">
+        <span class="finding-icon ${cls}">${sym}</span>
+        <span class="finding-text">${escHtml(f)}</span>
+      </div>`;
+    }).join('');
+  }
+}
+
+function goBack(){
+  document.getElementById('page-results').classList.add('hidden');
+  document.getElementById('src-section').style.display='none';
+  document.getElementById('page-home').classList.remove('hidden');
+  document.getElementById('url-input').focus();
+}
+
+document.getElementById('url-input').addEventListener('keydown',e=>{
+  if(e.key==='Enter') startScan();
+});
+</script>
+</body>
+</html>

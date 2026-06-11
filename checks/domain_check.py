@@ -128,8 +128,13 @@ def check_suspicious_domain(url: str) -> dict:
         # ------------------------------------------------------------------ #
         # 3. Brand keyword in a subdomain but NOT the registered domain
         #    e.g. "paypal.evil.com" — paypal is in the subdomain, not in evil.com
+        #    Skip if the brand IS the TLD (e.g. about.google, mail.google)
         # ------------------------------------------------------------------ #
+        tld = hostname.rsplit(".", 1)[-1] if "." in hostname else ""
         for brand in TARGETED_BRANDS:
+            # Don't flag when the brand owns the TLD (e.g. .google, .apple)
+            if brand == tld:
+                continue
             if brand in hostname and brand not in registered:
                 if not any(brand in r for r in reasons):
                     reasons.append(f"brand keyword '{brand}' found in subdomain")
@@ -144,11 +149,12 @@ def check_suspicious_domain(url: str) -> dict:
             score = max(score, 1)
 
         # ------------------------------------------------------------------ #
-        # 5. Deeply nested subdomains (≥ 3 dots)
-        #    e.g. login.paypal.com.phishing.net  (3 dots = 4 labels)
+        # 5. Deeply nested subdomains (≥ 4 dots)
+        #    Raise threshold from 3 to 4 to avoid flagging legitimate 3-label
+        #    domains like mail.google.com or about.google
         # ------------------------------------------------------------------ #
         dot_count = hostname.count(".")
-        if dot_count >= 3:
+        if dot_count >= 4:
             reasons.append(
                 f"deeply nested subdomains ({dot_count} dots in hostname)"
             )
