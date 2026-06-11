@@ -1,4 +1,13 @@
-colorama==0.4.6
+# ── Core ──────────────────────────────────────────────────────────────────────
+# HTTP requests (used by reachability_check and source_analysis_check)
 requests==2.32.3
+
+# Coloured terminal output (CLI verdict display)
+colorama==0.4.6
+
+# ── API Server ────────────────────────────────────────────────────────────────
+# Lightweight web framework — serves POST /api/scan for the browser UI
 flask==3.0.3
+
+# CORS headers so UGI.html (opened via file://) can call the Flask API
 flask-cors==4.0.1
